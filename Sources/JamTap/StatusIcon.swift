@@ -13,7 +13,7 @@ enum StatusIcon {
         let badgeWidth: CGFloat = kind == .idle ? 0 : 12
         let size = NSSize(width: badgeWidth + guitarWidth, height: height)
         let image = NSImage(size: size, flipped: false) { _ in
-            let guitarAlpha: CGFloat = kind == .idle ? 0.4 : 1.0
+            let guitarAlpha: CGFloat = kind == .idle || kind == .problem ? 0.4 : 1.0  // translucent when not recording
             drawGuitar(in: NSRect(x: badgeWidth, y: 0, width: guitarWidth, height: height),
                        colour: NSColor.black.withAlphaComponent(guitarAlpha))
             let badge = NSRect(x: 0, y: 0, width: badgeWidth, height: height)
@@ -26,7 +26,7 @@ enum StatusIcon {
                      centredIn: NSRect(x: badge.maxX - 7, y: 1, width: 8, height: 11), alpha: 1)
                 draw(symbol: "music.note", pointSize: 7, weight: .bold,
                      centredIn: NSRect(x: badge.minX, y: 8, width: 7, height: 9), alpha: 0.75)
-            case .recordingSilent:
+            case .recordingSilent, .problem:
                 draw(symbol: "exclamationmark.triangle.fill", pointSize: 9, weight: .bold,
                      centredIn: badge, alpha: 1)
             case .converting:

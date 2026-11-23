@@ -12,7 +12,8 @@ with `ffmpeg`. It does nothing those two tools cannot do from a terminal; it rem
 
 ![Icon states](docs/icon-sheet.png)
 
-Left to right: idle, recording, recording but silent for 10 s, converting the last take.
+Left to right: idle, recording, recording but silent for 10 s, converting the last take,
+and a problem with the last take (the menu then says what went wrong).
 While recording, the elapsed time shows to the left of the icon.
 
 The silence warning means that `catap` has captured nothing above −60 dBFS for 10 seconds,

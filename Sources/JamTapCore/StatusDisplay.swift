@@ -8,9 +8,15 @@ public enum StatusIconKind: String, CaseIterable, Sendable {
     case recordingSilent
     /// Not recording, and an earlier take is still being converted to MP3.
     case converting
+    /// Not recording, and the last take failed or is silent: a translucent guitar with a warning mark.
+    /// The menu says what went wrong.
+    case problem
 
-    public static func showing(isRecording: Bool, isSilentTooLong: Bool, conversionsInProgress: Int) -> StatusIconKind {
+    /// - Parameter hasUnseenProblem: the last take went wrong and the user has not opened the menu since.
+    public static func showing(isRecording: Bool, isSilentTooLong: Bool, conversionsInProgress: Int,
+                               hasUnseenProblem: Bool) -> StatusIconKind {
         if isRecording { return isSilentTooLong ? .recordingSilent : .recording }
+        if hasUnseenProblem { return .problem }
         return conversionsInProgress > 0 ? .converting : .idle
     }
 }

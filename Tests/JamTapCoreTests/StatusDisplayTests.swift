@@ -14,13 +14,19 @@ import Testing
 }
 
 @Test func iconShowsRecordingBeforeAnythingElse() {
-    #expect(StatusIconKind.showing(isRecording: true, isSilentTooLong: false, conversionsInProgress: 2) == .recording)
-    #expect(StatusIconKind.showing(isRecording: true, isSilentTooLong: true, conversionsInProgress: 0) == .recordingSilent)
+    #expect(StatusIconKind.showing(isRecording: true, isSilentTooLong: false, conversionsInProgress: 2, hasUnseenProblem: true) == .recording)
+    #expect(StatusIconKind.showing(isRecording: true, isSilentTooLong: true, conversionsInProgress: 0, hasUnseenProblem: false) == .recordingSilent)
 }
 
 @Test func iconShowsConvertingOnlyWhenNotRecording() {
-    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 1) == .converting)
-    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 0) == .idle)
+    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 1, hasUnseenProblem: false) == .converting)
+    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 0, hasUnseenProblem: false) == .idle)
     // A stale silence flag from the last recording does not matter once recording has stopped.
-    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: true, conversionsInProgress: 0) == .idle)
+    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: true, conversionsInProgress: 0, hasUnseenProblem: false) == .idle)
+}
+
+@Test func iconShowsAProblemOfTheLastTakeUntilItIsSeen() {
+    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 0, hasUnseenProblem: true) == .problem)
+    // A problem matters more than a conversion that is still running.
+    #expect(StatusIconKind.showing(isRecording: false, isSilentTooLong: false, conversionsInProgress: 1, hasUnseenProblem: true) == .problem)
 }

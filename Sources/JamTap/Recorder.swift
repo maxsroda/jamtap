@@ -5,6 +5,9 @@ import JamTapCore
 enum TakeResult {
     /// The take is saved; `url` is the MP3, or the directory of a take with one track per app.
     case saved(URL)
+    /// The take is saved but holds only digital silence, which is what macOS delivers when the app
+    /// lacks the permission to record system audio.
+    case savedSilent(URL)
     /// The recording exists but something went wrong afterwards; `url` is what was kept.
     case keptUnconverted(URL, reason: String)
     case failed(reason: String)
@@ -153,43 +156,43 @@ final class Recorder {
         }
         everySecond?.invalidate()
         state = .idle
+        let wavs: [URL], result: URL
         switch capture.output {
         case .singleWav(let wav):
-            guard fileHasContent(wav) else {
-                onTakeFinished(.failed(reason: "No recording was made.\n" + Tools.lastOutput(logName: "catap")))
-                break
-            }
-            convert([wav], savedAs: capture.take.mp3)
+            wavs = [wav].filter(fileHasContent)
+            result = capture.take.mp3
         case .trackDirectory(let directory):
-            let wavs = ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
+            wavs = ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
                 .filter { $0.pathExtension.lowercased() == "wav" && fileHasContent($0) }
-            guard !wavs.isEmpty else {
-                onTakeFinished(.failed(reason: "No recording was made.\n" + Tools.lastOutput(logName: "catap")))
-                break
+            result = directory
+        }
+        guard !wavs.isEmpty else {
+            onTakeFinished(.failed(reason: "No recording was made.\n" + Tools.lastOutput(logName: "catap")))
+            onChange()
+            return
+        }
+        // Files of pure digital silence are dropped, unless that would leave nothing: an app with
+        // several audio processes gives one track per process, and most of them stay silent.
+        // Reading whole files takes a while for a long take, so it happens off the main thread.
+        conversionsInProgress += 1
+        onChange()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let wavsWithSound = wavs.filter { WavLevel.peak(ofFile: $0) != 0 }
+            if !wavsWithSound.isEmpty {
+                for silentWav in wavs where !wavsWithSound.contains(silentWav) {
+                    try? FileManager.default.removeItem(at: silentWav)
+                }
             }
-            // An app with several audio processes gives one track per process, and most stay silent.
-            // Tracks of pure digital silence are dropped, unless that would leave nothing.
-            // Reading whole tracks takes a while for a long take, so it happens off the main thread.
-            conversionsInProgress += 1
-            DispatchQueue.global(qos: .userInitiated).async {
-                let tracksWithSound = wavs.filter { WavLevel.peak(ofFile: $0) != 0 }
-                if !tracksWithSound.isEmpty {
-                    for silentTrack in wavs where !tracksWithSound.contains(silentTrack) {
-                        try? FileManager.default.removeItem(at: silentTrack)
-                    }
-                }
-                DispatchQueue.main.async {
-                    self.convert(tracksWithSound.isEmpty ? wavs : tracksWithSound, savedAs: directory)
-                    self.conversionsInProgress -= 1
-                    self.onChange()
-                }
+            DispatchQueue.main.async {
+                self.convert(wavsWithSound.isEmpty ? wavs : wavsWithSound, savedAs: result, takeIsSilent: wavsWithSound.isEmpty)
+                self.conversionsInProgress -= 1
+                self.onChange()
             }
         }
-        onChange()
     }
 
     /// Converts each WAV to an MP3 beside it and deletes the WAV; reports once when all are done.
-    private func convert(_ wavs: [URL], savedAs result: URL) {
+    private func convert(_ wavs: [URL], savedAs result: URL, takeIsSilent: Bool) {
         guard let ffmpeg = Tools.ffmpeg else {
             onTakeFinished(.keptUnconverted(wavs.count == 1 ? wavs[0] : result,
                                             reason: "ffmpeg is not installed, so the take stays a WAV."))
@@ -211,7 +214,7 @@ final class Recorder {
                 guard remaining == 0 else { return }
                 self.conversionsInProgress -= 1
                 if failures.isEmpty {
-                    self.onTakeFinished(.saved(result))
+                    self.onTakeFinished(takeIsSilent ? .savedSilent(result) : .saved(result))
                 } else {
                     self.onTakeFinished(.keptUnconverted(failures.count == 1 ? failures[0] : result,
                                                          reason: "MP3 conversion failed, so the WAV is kept.\n"

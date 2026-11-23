@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var toggleHotKey: HotKey?
     private let sourceMenu = NSMenu()
     private var isWaitingToQuit = false
+    /// What went wrong with the last take, until the user has seen it in the menu.
+    private var unseenProblem: String?
     private let toggleSignal = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,8 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshStatusItem() {
         guard let button = statusItem.button else { return }
+        if recorder.isRecording { unseenProblem = nil }  // a new take replaces the news about the last one
         let kind = StatusIconKind.showing(isRecording: recorder.isRecording, isSilentTooLong: recorder.isSilentTooLong,
-                                          conversionsInProgress: recorder.conversionsInProgress)
+                                          conversionsInProgress: recorder.conversionsInProgress,
+                                          hasUnseenProblem: unseenProblem != nil)
         button.image = StatusIcon.image(kind)
         let digitsOfEqualWidth = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
         button.attributedTitle = NSAttributedString(string: recorder.elapsedSeconds.map { ElapsedTime.text(seconds: $0) + " " } ?? "",
@@ -56,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .recording: "JamTap: recording, click to stop"
         case .recordingSilent: "JamTap: recording, but nothing has been heard for a while"
         case .converting: "JamTap: converting the last take to MP3"
+        case .problem: "JamTap: the last take went wrong, right-click to see why"
         }
         if isWaitingToQuit, !recorder.isBusy {
             NSApp.reply(toApplicationShouldTerminate: true)
@@ -67,30 +72,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
             // Attach the menu only for this click, so that a plain left click keeps toggling.
             statusItem.menu = makeMenu()
-            statusItem.button?.performClick(nil)
+            statusItem.button?.performClick(nil)  // returns when the menu has closed
             statusItem.menu = nil
+            unseenProblem = nil  // the menu showed it
+            refreshStatusItem()
         } else {
             recorder.toggle()
         }
     }
 
+    /// Tells the user how a take ended. A take that went wrong is reported by a notification and, in
+    /// case notifications are off, by a warning mark on the icon with the reason in the menu.
+    /// No alert window: a modal alert would stop the app from reacting to clicks until it is dismissed.
     private func report(_ result: TakeResult) {
         switch result {
         case .saved(let url):
             notifier.show(title: "Jam saved", body: url.lastPathComponent, file: url)
+        case .savedSilent(let url):
+            let advice = "\(url.lastPathComponent) contains only silence. If sound was playing, macOS has not allowed "
+                + "JamTap to record it: allow JamTap under System Settings > Privacy & Security > "
+                + "Screen & System Audio Recording, then quit and reopen JamTap."
+            notifier.show(title: "Jam is silent", body: advice, file: url)
+            unseenProblem = advice
         case .keptUnconverted(let url, let reason):
             notifier.show(title: "Jam saved as WAV", body: "\(url.lastPathComponent)\n\(reason)", file: url)
+            unseenProblem = "\(url.lastPathComponent): \(reason)"
         case .failed(let reason):
             notifier.show(title: "JamTap could not record", body: reason, file: nil)
-            // A failure must not be missed if notifications are off.
-            showAlert(title: "JamTap could not record", text: reason)
+            unseenProblem = "Could not record. \(reason)"
         }
+        refreshStatusItem()
     }
 
     // MARK: Menu
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        if let unseenProblem {
+            // Menu items do not wrap, so the reason is laid out in lines of about 60 characters.
+            var line = ""
+            var lines: [String] = []
+            for word in unseenProblem.split(whereSeparator: \.isWhitespace) {
+                if !line.isEmpty, line.count + word.count >= 60 {
+                    lines.append(line)
+                    line = ""
+                }
+                line += (line.isEmpty ? "" : " ") + word
+            }
+            for (index, text) in (lines + [line]).enumerated() {
+                let reason = NSMenuItem(title: (index == 0 ? "⚠ " : "     ") + text, action: nil, keyEquivalent: "")
+                reason.isEnabled = false
+                menu.addItem(reason)
+            }
+            menu.addItem(.separator())
+        }
         let toggle = item(recorder.isRecording ? "Stop Recording" : "Start Recording", #selector(toggleRecording))
         if toggleHotKey != nil {  // shown only if the system-wide shortcut could be registered
             toggle.keyEquivalent = HotKey.toggleRecordingKeyEquivalent
