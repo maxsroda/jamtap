@@ -25,7 +25,9 @@ xattr -cr "$app"
 codesign --force --sign - "$app"
 echo "Built $app"
 if [ "${1:-}" = install ]; then
+  # A running JamTap finishes its take before it quits, so wait for it.
   pkill -x JamTap 2>/dev/null || true
+  while pgrep -x JamTap >/dev/null; do sleep 0.2; done
   ditto "$app" /Applications/JamTap.app
   echo "Installed /Applications/JamTap.app"
 fi

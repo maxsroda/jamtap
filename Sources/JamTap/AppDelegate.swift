@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// What went wrong with the last take, until the user has seen it in the menu.
     private var unseenProblem: String?
     private let toggleSignal = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+    private let terminateSignal = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let button = statusItem.button {
@@ -31,6 +32,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         signal(SIGUSR1, SIG_IGN)  // the default action of the signal would end the app
         toggleSignal.setEventHandler { [weak self] in self?.recorder.toggle() }
         toggleSignal.resume()
+        // `pkill JamTap` (SIGTERM) quits the way the menu does. By default the signal would end the app
+        // at once and leave catap recording with nobody to stop it.
+        signal(SIGTERM, SIG_IGN)
+        terminateSignal.setEventHandler {
+            // Not from inside this main-queue block: quitting waits for the take in a nested run loop, and
+            // the take's completion handlers, queued on the main queue, could not run until the block returns.
+            RunLoop.main.perform(inModes: [.common]) { NSApp.terminate(nil) }
+        }
+        terminateSignal.resume()
         notifier.requestPermission()
         refreshStatusItem()
     }
