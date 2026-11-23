@@ -83,3 +83,7 @@ scripts/icon-sheet.sh docs/icon-sheet.png   # redraw the icon preview after chan
 `Sources/JamTapCore` holds the logic without AppKit (take names, command lines, WAV level, silence
 detection) and is unit-tested. `Sources/JamTap` is the AppKit shell around it.
 The output of `catap` and `ffmpeg` for the last take is in `~/Library/Logs/JamTap/`.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).
