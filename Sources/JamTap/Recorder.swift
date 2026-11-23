@@ -83,7 +83,14 @@ final class Recorder {
             .map { ($0 as NSString).deletingPathExtension }
         let take = Take(directory: directory,
                         name: TakeName.firstUnused(TakeName.timestamped(at: Date()), among: Set(existingNames)))
-        let source = Settings.source
+        let chosenApps = Settings.chosenApps
+        let processes = Settings.sourceKind == .systemMix ? [] : Tools.audioProcesses()
+        guard let source = RecordingSource.resolved(kind: Settings.sourceKind, chosenApps: chosenApps, processes: processes) else {
+            onTakeFinished(.failed(reason: chosenApps.isEmpty
+                ? "No app is checked. Check apps in the Record menu, or choose Everything the Mac Plays."
+                : "None of the checked apps has audio open: \(chosenApps.joined(separator: ", "))."))
+            return
+        }
         let output = CaptureCommand.output(source: source, take: take)
 
         guard let process = Tools.run(catap, CaptureCommand.catapArguments(source: source, take: take), logName: "catap",
@@ -110,6 +117,18 @@ final class Recorder {
         // SIGINT, like Ctrl+C in a terminal: catap then finishes the WAV file properly and exits.
         capture.process.interrupt()
         onChange()
+
+        // catap cannot react to the signal while it is stuck setting up, for instance while macOS
+        // waits for an answer to its audio-capture permission question. Nothing has been captured
+        // then, so it is ended. A catap that did record is left to finish its file, however long that takes.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, case .stopping(let stuck) = self.state, stuck.process === capture.process,
+                  stuck.process.isRunning else { return }
+            let printed = (try? String(contentsOf: Tools.logFile(named: "catap"), encoding: .utf8)) ?? ""
+            if !CaptureCommand.catapHasStartedRecording(output: printed) {
+                stuck.process.terminate()
+            }
+        }
     }
 
     private func secondPassed() {
@@ -148,7 +167,23 @@ final class Recorder {
                 onTakeFinished(.failed(reason: "No recording was made.\n" + Tools.lastOutput(logName: "catap")))
                 break
             }
-            convert(wavs, savedAs: directory)
+            // An app with several audio processes gives one track per process, and most stay silent.
+            // Tracks of pure digital silence are dropped, unless that would leave nothing.
+            // Reading whole tracks takes a while for a long take, so it happens off the main thread.
+            conversionsInProgress += 1
+            DispatchQueue.global(qos: .userInitiated).async {
+                let tracksWithSound = wavs.filter { WavLevel.peak(ofFile: $0) != 0 }
+                if !tracksWithSound.isEmpty {
+                    for silentTrack in wavs where !tracksWithSound.contains(silentTrack) {
+                        try? FileManager.default.removeItem(at: silentTrack)
+                    }
+                }
+                DispatchQueue.main.async {
+                    self.convert(tracksWithSound.isEmpty ? wavs : tracksWithSound, savedAs: directory)
+                    self.conversionsInProgress -= 1
+                    self.onChange()
+                }
+            }
         }
         onChange()
     }

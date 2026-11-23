@@ -150,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === sourceMenu else { return }
         menu.removeAllItems()
-        for (title, kind) in [("Everything the Mac Plays", Settings.SourceKind.systemMix),
+        for (title, kind) in [("Everything the Mac Plays", SourceKind.systemMix),
                               ("Only the Checked Apps, Mixed", .mixOfApps),
                               ("Only the Checked Apps, One Track Each", .separateTrackPerApp)] {
             let choice = item(title, #selector(chooseSourceKind(_:)))
@@ -160,10 +160,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
         let chosenApps = Settings.chosenApps
-        var apps = listAudioApps()
+        var apps = AudioAppList.apps(of: Tools.audioProcesses())
         // A chosen app stays listed while it is not running, so that it can be unchecked.
         for name in chosenApps where !apps.contains(where: { $0.name == name }) {
-            apps.append(AudioApp(name: name, bundleIdentifier: "", isPlaying: false))
+            apps.append(AudioApp(name: name, isPlaying: false))
         }
         if apps.isEmpty {
             let none = NSMenuItem(title: "No App Has Audio Open", action: nil, keyEquivalent: "")
@@ -184,20 +184,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    private func listAudioApps() -> [AudioApp] {
-        guard let catap = Tools.catap else { return [] }
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = catap
-        process.arguments = ["list-apps", "--all"]
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return [] }
-        let listing = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        process.waitUntilExit()
-        return AudioAppList.parse(catapListing: listing)
-    }
-
     private func recentTakes(limit: Int) -> [URL] {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey]
         let urls = (try? FileManager.default.contentsOfDirectory(at: Settings.recordingsDirectory, includingPropertiesForKeys: keys)) ?? []
@@ -213,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleRecording() { recorder.toggle() }
 
     @objc private func chooseSourceKind(_ sender: NSMenuItem) {
-        guard let kind = (sender.representedObject as? String).flatMap(Settings.SourceKind.init) else { return }
+        guard let kind = (sender.representedObject as? String).flatMap(SourceKind.init) else { return }
         Settings.sourceKind = kind
     }
 

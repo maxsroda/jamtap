@@ -54,3 +54,16 @@ private func samples(_ values: [Int16]) -> Data {
     #expect(abs(WavLevel.decibels(ofPeak: 0.5) - -6.0206) < 1e-3)
     #expect(WavLevel.decibels(ofPeak: 0) == -.infinity)
 }
+
+@Test func peakOfAWholeFileSkipsTheHeader() throws {
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("jamtap-test-\(UUID().uuidString).wav")
+    defer { try? FileManager.default.removeItem(at: file) }
+    try (wavHeader() + samples([0, 0, -8192, 0])).write(to: file)
+    #expect(WavLevel.peak(ofFile: file) == 0.25)
+    try (wavHeader() + samples([0, 0, 0, 0])).write(to: file)
+    #expect(WavLevel.peak(ofFile: file) == 0)
+}
+
+@Test func peakOfAnUnreadableFileIsUnknown() {
+    #expect(WavLevel.peak(ofFile: URL(fileURLWithPath: "/nonexistent/take.wav")) == nil)
+}

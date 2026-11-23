@@ -1,4 +1,5 @@
 import Foundation
+import JamTapCore
 
 /// Finds and runs the command-line tools JamTap depends on.
 /// An app started from Finder does not get the shell's PATH, so the usual install directories are searched.
@@ -42,6 +43,21 @@ enum Tools {
         } catch {
             return nil
         }
+    }
+
+    /// The processes that have an audio connection right now, as `catap` lists them.
+    static func audioProcesses() -> [AudioProcess] {
+        guard let catap else { return [] }
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = catap
+        process.arguments = ["list-apps", "--all"]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        let listing = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        process.waitUntilExit()
+        return AudioAppList.parseProcesses(catapListing: listing)
     }
 
     static func logFile(named logName: String) -> URL { logDirectory.appendingPathComponent(logName + ".log") }

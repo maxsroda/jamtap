@@ -14,7 +14,8 @@ enum StatusIcon {
         let size = NSSize(width: badgeWidth + guitarWidth, height: height)
         let image = NSImage(size: size, flipped: false) { _ in
             let guitarAlpha: CGFloat = kind == .idle ? 0.4 : 1.0
-            drawGuitar(in: NSRect(x: badgeWidth, y: 0, width: guitarWidth, height: height), alpha: guitarAlpha)
+            drawGuitar(in: NSRect(x: badgeWidth, y: 0, width: guitarWidth, height: height),
+                       colour: NSColor.black.withAlphaComponent(guitarAlpha))
             let badge = NSRect(x: 0, y: 0, width: badgeWidth, height: height)
             switch kind {
             case .idle:
@@ -39,7 +40,7 @@ enum StatusIcon {
 
     /// One Stratocaster-style electric guitar, neck pointing up and to the right.
     /// The SF Symbol "guitars" shows three guitars side by side, which is unreadable at menu bar size.
-    private static func drawGuitar(in rect: NSRect, alpha: CGFloat) {
+    private static func drawGuitar(in rect: NSRect, colour: NSColor) {
         guard let context = NSGraphicsContext.current else { return }
         context.saveGraphicsState()
         defer { context.restoreGraphicsState() }
@@ -49,7 +50,7 @@ enum StatusIcon {
         // The long upper horn and the tuners are on the left (bass) side.
         let designHeight: CGFloat = 23
         let tiltFromVertical: CGFloat = -42  // degrees; negative turns the neck towards the right
-        let scale: CGFloat = 0.8
+        let scale = 0.8 * rect.height / height  // 0.8 points per design unit at menu bar size
         let transform = NSAffineTransform()
         transform.translateX(by: rect.midX, yBy: rect.midY)
         transform.rotate(byDegrees: tiltFromVertical)
@@ -93,7 +94,7 @@ enum StatusIcon {
                         controlPoint1: NSPoint(x: -2.3, y: 18.6), controlPoint2: NSPoint(x: -1.1, y: 18.9))
         headstock.close()
 
-        NSColor.black.withAlphaComponent(alpha).setFill()
+        colour.setFill()
         context.compositingOperation = .copy
         for part in [body, neck, headstock] { part.fill() }
 
@@ -112,13 +113,45 @@ enum StatusIcon {
     }
 
     private static func draw(symbol name: String, pointSize: CGFloat, weight: NSFont.Weight,
-                             centredIn rect: NSRect, alpha: CGFloat) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+                             centredIn rect: NSRect, alpha: CGFloat, colour: NSColor? = nil) {
+        var configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        if let colour { configuration = configuration.applying(.init(paletteColors: [colour])) }
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration) else { return }
         let origin = NSPoint(x: rect.midX - symbol.size.width / 2, y: rect.midY - symbol.size.height / 2)
         symbol.draw(in: NSRect(origin: origin, size: symbol.size), from: .zero,
                     operation: .sourceOver, fraction: alpha)
+    }
+
+    /// The app icon, shown in notifications and in Finder: the recording icon in white on a sunburst
+    /// finish, as a PNG of 1024 × 1024 pixels.
+    static func writeAppIcon(to url: URL) throws {
+        let side: CGFloat = 1024
+        // The white drawing is made on its own transparent layer, because the pickups are cut out of
+        // the guitar and must not cut through the background.
+        let drawing = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
+            drawGuitar(in: NSRect(x: 320, y: 225, width: 600, height: 600), colour: .white)
+            draw(symbol: "music.note", pointSize: 190, weight: .bold,
+                 centredIn: NSRect(x: 240, y: 305, width: 200, height: 240), alpha: 1, colour: .white)
+            draw(symbol: "music.note", pointSize: 130, weight: .bold,
+                 centredIn: NSRect(x: 140, y: 555, width: 150, height: 180), alpha: 0.8, colour: .white)
+            return true
+        }
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(side), pixelsHigh: Int(side),
+                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        // macOS app icons are a rounded square of 824 points centred in the 1024-point canvas.
+        let tile = NSRect(x: 100, y: 100, width: 824, height: 824)
+        let amber = NSColor(red: 0.96, green: 0.62, blue: 0.16, alpha: 1)
+        let cherry = NSColor(red: 0.62, green: 0.13, blue: 0.09, alpha: 1)
+        let nearBlack = NSColor(red: 0.13, green: 0.05, blue: 0.04, alpha: 1)
+        NSGradient(colorsAndLocations: (amber, 0), (cherry, 0.62), (nearBlack, 1))!
+            .draw(in: NSBezierPath(roundedRect: tile, xRadius: 185, yRadius: 185), relativeCenterPosition: .zero)
+        drawing.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        try bitmap.representation(using: .png, properties: [:])!.write(to: url)
     }
 
     /// Writes each icon as a PNG on a dark and on a light strip, to judge it outside the menu bar.

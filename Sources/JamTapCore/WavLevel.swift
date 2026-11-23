@@ -53,6 +53,21 @@ public enum WavLevel {
         return Double(largestMagnitude) / 32768
     }
 
+    /// The peak of a finished 16-bit WAV file, read in pieces so that a long take does not fill the memory.
+    /// Nil when the file cannot be read as 16-bit integer samples.
+    public static func peak(ofFile url: URL) -> Double? {
+        guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? file.close() }
+        guard let header = try? file.read(upToCount: 4096), let format = parseHeader(header), format.bitsPerSample == 16,
+              (try? file.seek(toOffset: UInt64(format.dataOffset))) != nil else { return nil }
+        var largestPeak = 0.0
+        let evenByteCount = 1 << 20  // whole samples per piece
+        while let piece = try? file.read(upToCount: evenByteCount), !piece.isEmpty {
+            largestPeak = max(largestPeak, peak(ofInt16Samples: piece))
+        }
+        return largestPeak
+    }
+
     /// Decibels relative to full scale (dBFS): 0 at full scale, −6 at half, −∞ for digital silence.
     public static func decibels(ofPeak peak: Double) -> Double {
         peak > 0 ? 20 * log10(peak) : -.infinity

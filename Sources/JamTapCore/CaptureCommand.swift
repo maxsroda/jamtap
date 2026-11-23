@@ -1,13 +1,28 @@
 import Foundation
 
-/// What is recorded.
-public enum RecordingSource: Equatable, Sendable {
+/// What the user chose to record.
+public enum SourceKind: String, CaseIterable, Sendable {
     /// Everything the Mac plays, mixed into one file.
     case systemMix
-    /// Only the named apps, mixed into one file.
-    case mixOfApps([String])
-    /// Only the named apps, one file per app, so that guitar and backing track stay separate.
-    case separateTrackPerApp([String])
+    /// Only the chosen apps, mixed into one file.
+    case mixOfApps
+    /// Only the chosen apps, one file per process, so that guitar and backing track stay separate.
+    case separateTrackPerApp
+}
+
+/// What one take records: the user's choice, with the chosen apps resolved to their running processes.
+public enum RecordingSource: Equatable, Sendable {
+    case systemMix
+    case mixOfProcesses([Int])
+    case separateTrackPerProcess([Int])
+
+    /// Nil when apps are to be recorded but none of the chosen ones has an audio process.
+    public static func resolved(kind: SourceKind, chosenApps: [String], processes: [AudioProcess]) -> RecordingSource? {
+        if kind == .systemMix { return .systemMix }
+        let processIDs = AudioAppList.processIDs(ofApps: chosenApps, among: processes)
+        if processIDs.isEmpty { return nil }
+        return kind == .mixOfApps ? .mixOfProcesses(processIDs) : .separateTrackPerProcess(processIDs)
+    }
 }
 
 /// The files of one take.
@@ -35,23 +50,29 @@ public enum CaptureOutput: Equatable, Sendable {
 /// Command lines of the two tools JamTap runs: `catap` records, `ffmpeg` converts WAV to MP3.
 public enum CaptureCommand {
     public static func catapArguments(source: RecordingSource, take: Take) -> [String] {
-        // "--" ends the options, so an app name that starts with "-" is not read as one.
-        switch source {
-        case .mixOfApps(let apps) where !apps.isEmpty:
-            return ["record", "-o", take.wav.path, "--"] + apps
-        case .separateTrackPerApp(let apps) where !apps.isEmpty:
-            return ["record-multitrack", "-o", take.trackDirectory.path, "--"] + apps
-        case .systemMix, .mixOfApps, .separateTrackPerApp:
-            // No app chosen: record everything rather than nothing.
+        switch (source, output(source: source, take: take)) {
+        case (.systemMix, _):
             return ["record", "--system", "-o", take.wav.path]
+        case (.mixOfProcesses(let processIDs), _), (.separateTrackPerProcess(let processIDs), .singleWav):
+            return ["record", "-o", take.wav.path] + processIDs.flatMap { ["--pid", String($0)] }
+        case (.separateTrackPerProcess(let processIDs), .trackDirectory(let directory)):
+            return ["record-multitrack", "-o", directory.path] + processIDs.flatMap { ["--pid", String($0)] }
         }
     }
 
+    /// `catap record-multitrack` needs at least two tracks, so a single process is recorded as one file.
     public static func output(source: RecordingSource, take: Take) -> CaptureOutput {
-        if case .separateTrackPerApp(let apps) = source, !apps.isEmpty {
+        if case .separateTrackPerProcess(let processIDs) = source, processIDs.count >= 2 {
             return .trackDirectory(take.trackDirectory)
         }
         return .singleWav(take.wav)
+    }
+
+    /// Whether `catap`, judging by what it has printed, got as far as capturing audio. Before that it
+    /// announces its sources ("Recording from: …", "Recording global …"); the capture itself starts
+    /// with "Recording..." or "Recording for N seconds...".
+    public static func catapHasStartedRecording(output: String) -> Bool {
+        output.split(separator: "\n").contains { $0.hasPrefix("Recording...") || $0.hasPrefix("Recording for ") }
     }
 
     /// Variable-bitrate MP3 at LAME quality 2 (about 190 kbit/s). Without `-y`, ffmpeg refuses to overwrite.

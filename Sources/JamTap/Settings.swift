@@ -3,10 +3,6 @@ import JamTapCore
 
 /// The user's choices, kept in the app's preferences (`defaults read pl.maksymiliansroda.jamtap`).
 enum Settings {
-    enum SourceKind: String, CaseIterable {
-        case systemMix, mixOfApps, separateTrackPerApp
-    }
-
     private static let defaults = UserDefaults.standard
 
     static var recordingsDirectory: URL {
@@ -26,14 +22,6 @@ enum Settings {
     static var chosenApps: [String] {
         get { defaults.stringArray(forKey: "chosenApps") ?? [] }
         set { defaults.set(newValue, forKey: "chosenApps") }
-    }
-
-    static var source: RecordingSource {
-        switch sourceKind {
-        case .systemMix: .systemMix
-        case .mixOfApps: .mixOfApps(chosenApps)
-        case .separateTrackPerApp: .separateTrackPerApp(chosenApps)
-        }
     }
 
     /// A recording stops by itself after this many minutes; 0 means never.
