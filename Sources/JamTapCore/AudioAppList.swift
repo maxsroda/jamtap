@@ -4,6 +4,12 @@ public struct AudioApp: Equatable, Sendable {
     public let bundleIdentifier: String
     /// True when the app is producing sound right now.
     public let isPlaying: Bool
+
+    public init(name: String, bundleIdentifier: String, isPlaying: Bool) {
+        self.name = name
+        self.bundleIdentifier = bundleIdentifier
+        self.isPlaying = isPlaying
+    }
 }
 
 public enum AudioAppList {
