@@ -1,16 +1,5 @@
 import AppKit
-
-/// What the menu bar icon tells the user.
-enum StatusIconKind: String, CaseIterable {
-    /// Not recording: a translucent guitar.
-    case idle
-    /// Recording: a solid guitar with notes flying off it.
-    case recording
-    /// Recording, but the capture has been silent for a while: a solid guitar with a warning mark.
-    case recordingSilent
-    /// Not recording, an earlier take is still being converted to MP3.
-    case converting
-}
+import JamTapCore
 
 enum StatusIcon {
     /// Height of the menu bar icon in points.
