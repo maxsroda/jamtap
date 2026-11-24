@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(statusItemClicked)
-            // Without a menu attached, the button reports both clicks: left toggles, right opens the menu.
+            // Without a menu attached, the button reports both clicks: left opens the menu, right toggles.
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imagePosition = .imageTrailing  // the elapsed time goes to the left of the icon
         }
@@ -66,11 +66,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.attributedTitle = NSAttributedString(string: recorder.elapsedSeconds.map { ElapsedTime.text(seconds: $0) + " " } ?? "",
                                                     attributes: [.font: digitsOfEqualWidth])
         button.toolTip = switch kind {
-        case .idle: "JamTap: click to record"
-        case .recording: "JamTap: recording, click to stop"
+        case .idle: "JamTap: right-click to record"
+        case .recording: "JamTap: recording, right-click to stop"
         case .recordingSilent: "JamTap: recording, but nothing has been heard for a while"
         case .converting: "JamTap: converting the last take to MP3"
-        case .problem: "JamTap: the last take went wrong, right-click to see why"
+        case .problem: "JamTap: the last take went wrong, click to see why"
         }
         if isWaitingToQuit, !recorder.isBusy {
             NSApp.reply(toApplicationShouldTerminate: true)
@@ -79,15 +79,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
+        // Control-click is the one-button way to right-click.
         if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
-            // Attach the menu only for this click, so that a plain left click keeps toggling.
+            recorder.toggle()
+        } else {
+            // Attach the menu only for this click, so that a right click keeps toggling.
             statusItem.menu = makeMenu()
             statusItem.button?.performClick(nil)  // returns when the menu has closed
             statusItem.menu = nil
             unseenProblem = nil  // the menu showed it
             refreshStatusItem()
-        } else {
-            recorder.toggle()
         }
     }
 

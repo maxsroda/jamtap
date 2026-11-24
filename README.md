@@ -3,7 +3,7 @@
 <img src="docs/app-icon.png" width="96" alt="JamTap app icon">
 
 A macOS menu bar button that records what the Mac plays and saves it as an MP3.
-Click the guitar to start a take, click again to stop.
+Right-click the guitar to start a take, right-click again to stop. A left click opens the menu.
 
 JamTap records with [`catap`](https://github.com/sbetko/catap) (Core Audio process taps) and converts
 with `ffmpeg`. It does nothing those two tools cannot do from a terminal; it removes the terminal.
@@ -23,8 +23,8 @@ which usually means the sound goes somewhere the capture does not hear.
 
 | Action | Effect |
 |---|---|
-| Left click | Start or stop a take |
-| Right click (or Control-click) | Open the menu |
+| Right click (or Control-click) | Start or stop a take |
+| Left click | Open the menu |
 | Control-Option-Command-J | Start or stop a take, from any app |
 | `pkill -USR1 -x JamTap` | Start or stop a take, from a script or a foot pedal |
 
